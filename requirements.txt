@@ -1,0 +1,17 @@
+# --- Procesamiento de Señales EEG ---
+mne
+pyedflib
+scipy
+
+# --- Manipulación y Análisis de Datos ---
+numpy
+pandas
+
+# --- Visualización ---
+matplotlib
+seaborn
+
+# --- Machine Learning e IA ---
+scikit-learn
+# tensorflow  # Descomentar si usarán redes neuronales profundas
+# torch       # Descomentar si prefieren PyTorch
