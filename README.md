@@ -16,6 +16,13 @@ Estructura del Repositorio
 - `src/`: Código fuente modular (preprocesamiento, extracción de características, modelos).
 - `docs/`: Documentación del proyecto (PIA2, manuales técnicos).
 
+Reglas de Colaboración
+Para mantener el orden con 30 integrantes, es obligatorio:
+
+1. **Ramas:** `tipo/grupo-descripción` (ej: `feat/g3-filtro-eeg`).
+2. **Commits:** `tipo: descripción` (ej: `feat: carga de dataset SEED`).
+3. **Pull Requests:** Todo cambio a `main` debe ser vía PR y requiere 1 aprobación.
+
 Guía de Inicio Rápido (Google Colab)
 Para trabajar de forma estandarizada, todos seguiremos este flujo:
 
