@@ -1,3 +1,6 @@
+# --- Gestor con Google Drive ---
+dvc
+
 # --- Procesamiento de Señales EEG ---
 mne
 pyedflib
