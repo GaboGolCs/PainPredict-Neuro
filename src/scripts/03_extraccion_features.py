@@ -1,37 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-SCRIPT 3: EXTRACCIÓN DE CARACTERÍSTICAS (ÍTEM 3)
+SCRIPT 3: EXTRACCIÓN DE CARACTERÍSTICAS (ÍTEM 3) - Sin Temperature
 Descripción: Bucle iterativo sobre rutas validadas, lectura en memoria
-             desde el archivo ZIP, extracción de features (usando el
-             módulo signal_processor) y guardado progresivo en disco
-             para evitar el colapso de la memoria RAM.
+             desde el archivo ZIP, extracción de features (ECG, GSR, EMG)
+             y guardado progresivo en disco para evitar el colapso de RAM.
 """
 
 import sys
-# Agregamos la ruta al path para poder importar signal_processor.py
 sys.path.append('/content/drive/Shareddrives/GPI/')
 
 import pandas as pd
 import zipfile
 import os
-from tqdm import tqdm  # Barra de progreso visual
-import signal_processor as sp  # Módulo de procesamiento de bioseñales
+from tqdm import tqdm
+import signal_processor as sp
 
 # --- CONFIGURACIÓN DE RUTAS ---
 ZIP_SEÑALES = '/content/drive/Shareddrives/GPI/biosignals_filtered.zip'
-CSV_RUTAS = '/content/drive/Shareddrives/GPI/rutas.csv'  # Archivo generado en el paso anterior
-CSV_SALIDA = '/content/features_consolidadas.csv'
+CSV_RUTAS   = '/content/drive/Shareddrives/GPI/rutas.csv'
+CSV_SALIDA  = '/content/features_consolidadas.csv'
 
 
 def motor_principal_extraccion(zip_path, csv_rutas, csv_salida, batch_size=100):
-    """
-    Ejecuta el procesamiento masivo de bioseñales leyendo directamente desde un ZIP.
-    """
     print("\n" + "=" * 70)
     print("INICIANDO PROCESO DE EXTRACCIÓN Y GUARDADO POR LOTES")
     print("=" * 70)
 
-    # 1. Carga del dataframe con las rutas válidas
     try:
         df_maestro = pd.read_csv(csv_rutas)
         total_archivos = len(df_maestro)
@@ -40,11 +34,9 @@ def motor_principal_extraccion(zip_path, csv_rutas, csv_salida, batch_size=100):
         print(f"[ERROR] No se encontró el archivo de rutas en: {csv_rutas}")
         return
 
-    # Variable para controlar si ya se escribieron los encabezados en el CSV final
     header_written = os.path.exists(csv_salida)
     lote_resultados = []
 
-    # 2. Lectura del archivo ZIP (se abre una sola vez para mejorar el rendimiento)
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
 
         for index, row in tqdm(df_maestro.iterrows(), total=total_archivos, desc="Procesando Lotes"):
@@ -53,38 +45,37 @@ def motor_principal_extraccion(zip_path, csv_rutas, csv_salida, batch_size=100):
 
             try:
                 with zip_ref.open(ruta_interna) as f:
-                    # NOTA: Verificar si el separador del CSV es ',' o '\t'
-                    df_signal = pd.read_csv(f)
+                    df_signal = pd.read_csv(f, sep='\t')  # CAMBIO CRÍTICO: sep='\t'
 
-                # --- EXTRACCIÓN DE CARACTERÍSTICAS ---
-                # Importante: Verificar que los nombres de las columnas coincidan ('EMG', 'ECG', 'EDA')
-
-                if 'EMG' in df_signal.columns:
-                    feats_emg = sp.extract_emg_features(df_signal['EMG'].values)
-                    info_paciente.update(feats_emg)
-
-                if 'ECG' in df_signal.columns:
-                    feats_ecg = sp.extract_ecg_features(df_signal['ECG'].values)
+                # ECG
+                if 'ecg' in df_signal.columns:
+                    feats_ecg = sp.extract_ecg_features(df_signal['ecg'].values)
                     info_paciente.update(feats_ecg)
 
-                if 'EDA' in df_signal.columns:
-                    feats_gsr = sp.extract_gsr_features(df_signal['EDA'].values)
+                # GSR
+                if 'gsr' in df_signal.columns:
+                    feats_gsr = sp.extract_gsr_features(df_signal['gsr'].values)
                     info_paciente.update(feats_gsr)
+
+                # EMG (3 músculos)
+                columnas_emg = ['emg_trapezius', 'emg_corrugator', 'emg_zygomaticus']
+                for col_emg in columnas_emg:
+                    if col_emg in df_signal.columns:
+                        feats_emg = sp.extract_emg_features(df_signal[col_emg].values)
+                        feats_renombradas = {f"{col_emg}_{k.replace('emg_', '')}": v for k, v in feats_emg.items()}
+                        info_paciente.update(feats_renombradas)
 
             except Exception as e:
                 info_paciente['error_procesamiento'] = str(e)
 
             lote_resultados.append(info_paciente)
 
-            # 3. GUARDADO POR LOTES (Para liberar memoria RAM en Colab)
             if len(lote_resultados) >= batch_size:
                 df_lote = pd.DataFrame(lote_resultados)
-                # mode='a' (append) permite añadir filas al final del archivo existente
                 df_lote.to_csv(csv_salida, mode='a', header=not header_written, index=False)
                 header_written = True
                 lote_resultados = []
 
-        # 4. Guardar los registros restantes que no completaron un lote exacto
         if lote_resultados:
             df_lote = pd.DataFrame(lote_resultados)
             df_lote.to_csv(csv_salida, mode='a', header=not header_written, index=False)
