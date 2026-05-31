@@ -1,0 +1,88 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-05-03",
+  "datasets": {
+    "biovid": {
+      "name": "BioVid HeatPain Dataset",
+      "type": "biosignals",
+      "location": "data/raw/Biovid HeatPain Dataset",
+      "master_inventory": "PartD/samples.csv",
+      "data_sources": {
+        "biosignals_raw": "PartC/biosignals_raw",
+        "biosignals_filtered": "PartA/biosignals_filtered or PartB/biosignals_filtered"
+      },
+      "specifications": {
+        "channels": 5,
+        "channel_names": ["GSR", "ECG", "EMG_trapezius", "EMG_corrugator", "EMG_zygomaticus"],
+        "sampling_rate_hz": 512,
+        "time_unit": "microseconds",
+        "file_format": "CSV",
+        "has_video": true,
+        "video_fps": 25
+      },
+      "metadata": {
+        "fields": ["age", "gender"],
+        "age_range": "18-65+",
+        "gender_encoding": "0=M, 1=F"
+      },
+      "pain_labels": {
+        "type": "categorical_emotions",
+        "classes": ["anger", "disgust", "fear", "happy", "neutral", "pain", "sad"],
+        "note": "Pain is presence/absence, NOT ordinal scale"
+      },
+      "conditions": ["BL1", "PA1", "PA2", "PA3", "PA4"],
+      "approx_subjects": 87,
+      "approx_total_samples": 2100
+    },
+    "biosemi": {
+      "name": "Biosemi ds005293 - 95 By BP",
+      "type": "EEG",
+      "location": "data/raw/Dataset_ _142 by Biosemi_ (ds005292)/ds005293-main",
+      "master_inventory": "participants.tsv",
+      "data_sources": {
+        "eeg_raw": "sub-{001-095}/ses-{1-6}/eeg/"
+      },
+      "specifications": {
+        "channels": 63,
+        "channel_system": "10-20 standard (Fp1, AF3, AF7, ... Oz)",
+        "sampling_rate_hz": 1000,
+        "time_unit": "seconds",
+        "file_format": "Brainvision (vhdr, vmrk, eeg)",
+        "bids_version": "1.1.1"
+      },
+      "metadata": {
+        "fields": ["age", "gender", "pain_threshold"],
+        "age_range": "18-25",
+        "gender_encoding": "M, F"
+      },
+      "pain_labels": {
+        "type": "ordinal_NRS",
+        "levels": {
+          "L1": "NRS 2 (2.0±0.2 J)",
+          "L2": "NRS 4 (2.7±0.3 J, pain threshold)",
+          "L3": "NRS 6 (3.4±0.3 J)",
+          "L4": "NRS 8 (4.1±0.4 J)"
+        }
+      },
+      "stimulation": {
+        "type": "laser",
+        "locations": ["left_hand_dorsum", "right_hand_dorsum"],
+        "trials_per_session": 80,
+        "conditions": 8
+      },
+      "subjects": 95,
+      "sessions_per_subject": 6,
+      "total_trials": 45600
+    }
+  },
+  "incompatibilities": {
+    "critical": [
+      "Modalidad: biosignales (5ch) vs EEG (63ch)",
+      "Formato: CSV vs Brainvision",
+      "Muestreo: 512 Hz vs 1000 Hz",
+      "Dolor: binario vs ordinal",
+      "Duración: 100-500s vs 2200s/sesión"
+    ],
+    "recommendation": "Mantener datasets separados con loaders específicos; usar índice centralizado para acceso unificado"
+  }
+}
