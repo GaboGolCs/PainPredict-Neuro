@@ -1,0 +1,6 @@
+﻿Cada archivo notebook con un modelo debe tener el siguiente formato de nombre
+
+nombremodelo_grupo_intento
+
+ejemplo: 
+xgboost_g2_1
