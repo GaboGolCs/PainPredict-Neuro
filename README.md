@@ -1,4 +1,4 @@
-# PainPredict-Neuro
+# PainPredict-Neuro - EN DESARROLLO
 
 **Proyecto de Gestión de Proyectos Informáticos (GPI-2) - UTEM 2026**
 
