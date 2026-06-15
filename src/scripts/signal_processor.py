@@ -6,7 +6,7 @@ Procesa ventanas de 5.5 segundos de señales EMG, ECG y GSR.
 
 Autor  : Gabriel Luciano Martínez Pérez — Grupo 2
 Fecha  : Mayo 2025
-Versión: 1.0.0
+Versión: 2.0.0
 
 Dependencias:
     - numpy
@@ -28,6 +28,43 @@ SECONDS_PER_MINUTE: int = 60      # Constante para conversión BPM
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# COMPLEJIDAD — Entropía Aproximada (ApEn) y Lempel-Ziv (LZC)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _extract_complexity(signal: np.ndarray) -> dict:
+    """
+    Calcula medidas de complejidad/irregularidad de una señal.
+
+    Utiliza la Entropía Aproximada (ApEn) para cuantificar la imprevisibilidad
+    de la serie temporal, y la Complejidad de Lempel-Ziv (LZC) para cuantificar
+    la aleatoriedad estructural de la señal binarizada internamente por NeuroKit2.
+
+    Parámetros
+    ----------
+    signal : np.ndarray
+        Array 1-D con las muestras de la señal original (sin rectificar).
+
+    Retorna
+    -------
+    dict con las siguientes claves:
+        apen (float) : Entropía Aproximada. 0.0 si ocurre un error.
+        lzc  (float) : Complejidad de Lempel-Ziv. 0.0 si ocurre un error.
+
+    Notas
+    -----
+    Ambas métricas son sensibles a ventanas muy cortas o señales planas;
+    cualquier excepción interna de NeuroKit2 se captura y se retornan ceros
+    para no interrumpir el pipeline de extracción.
+    """
+    try:
+        apen, _ = nk.entropy_approximate(signal)
+        lzc, _ = nk.complexity_lempelziv(signal)
+        return {"apen": float(apen), "lzc": float(lzc)}
+    except Exception:
+        return {"apen": 0.0, "lzc": 0.0}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # EMG — Electromiografía Facial (Corrugador, Cigomático, Trapecio)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -36,11 +73,14 @@ def extract_emg_features(
     sampling_rate: int = SAMPLING_RATE
 ) -> dict:
     """
-    Extrae características estadísticas de una señal EMG.
+    Extrae características estadísticas y de complejidad de una señal EMG.
 
     Las señales EMG oscilan alrededor de cero (señales bipolares), por lo que
-    se aplica valor absoluto antes de calcular cualquier feature, garantizando
-    que se trabaje sobre la envolvente de activación muscular.
+    se aplica valor absoluto antes de calcular los features de amplitud,
+    garantizando que se trabaje sobre la envolvente de activación muscular.
+    Las métricas de cruces por cero y complejidad se calculan sobre la señal
+    original (no rectificada), ya que dependen del signo y la dinámica cruda
+    de la señal.
 
     Parámetros
     ----------
@@ -59,6 +99,11 @@ def extract_emg_features(
         emg_auc   (float) : Área bajo la curva — energía total [µV·s].
                             Calculada con integración trapezoidal sobre el
                             eje temporal real (muestras / sampling_rate).
+        emg_zcr   (float)   : Número de cruces por cero (cambios de signo entre
+                            muestras consecutivas) en la señal original.
+                            Refleja la frecuencia de oscilación de la señal.
+        emg_apen  (float) : Entropía Aproximada de la señal original.
+        emg_lzc   (float) : Complejidad de Lempel-Ziv de la señal original.
 
     Excepciones
     -----------
@@ -70,7 +115,8 @@ def extract_emg_features(
     >>> signal = np.random.randn(2816) * 50   # señal ficticia a 512 Hz
     >>> feats = extract_emg_features(signal)
     >>> print(feats)
-    {'emg_max': ..., 'emg_mean': ..., 'emg_std': ..., 'emg_auc': ...}
+    {'emg_max': ..., 'emg_mean': ..., 'emg_std': ..., 'emg_auc': ...,
+     'emg_zcr': ..., 'emg_apen': ..., 'emg_lzc': ...}
     """
     # ── Validación de entrada ──────────────────────────────────────────────
     signal = np.asarray(signal, dtype=float)
@@ -85,17 +131,27 @@ def extract_emg_features(
     # ── Eje temporal en segundos ───────────────────────────────────────────
     time_axis = np.arange(len(rectified)) / sampling_rate
 
-    # ── Cálculo de features ───────────────────────────────────────────────
+    # ── Cálculo de features de amplitud (v1.0.0) ──────────────────────────
     emg_max  = float(np.max(rectified))
     emg_mean = float(np.mean(rectified))
     emg_std  = float(np.std(rectified, ddof=0))
     emg_auc  = float(integrate.trapezoid(rectified, time_axis))
+
+    # ── Cruces por cero (sobre la señal original, sin rectificar) ─────────
+    # Fórmula usada en la plantilla oficial del profesor
+    emg_zcr = float(((signal[:-1] * signal[1:]) < 0).sum())
+
+    # ── Complejidad (ApEn, LZC) sobre la señal original ───────────────────
+    complexity = _extract_complexity(signal)
 
     return {
         "emg_max":  emg_max,
         "emg_mean": emg_mean,
         "emg_std":  emg_std,
         "emg_auc":  emg_auc,
+        "emg_zcr":  emg_zcr,
+        "emg_apen": complexity["apen"],
+        "emg_lzc":  complexity["lzc"],
     }
 
 
@@ -109,10 +165,13 @@ def extract_ecg_features(
     window_seconds: float = WINDOW_SECONDS
 ) -> dict:
     """
-    Extrae la frecuencia cardíaca media (BPM) a partir de una señal ECG.
+    Extrae características de frecuencia cardíaca, variabilidad y complejidad
+    a partir de una señal ECG.
 
-    Utiliza NeuroKit2 para detectar los picos R del complejo QRS. Cuenta los
-    latidos en la ventana de análisis y los extrapola a un minuto completo.
+    Utiliza NeuroKit2 para detectar los picos R del complejo QRS. A partir de
+    los intervalos R-R (tiempo entre latidos consecutivos) se derivan métricas
+    de variabilidad cardíaca (RMSSD, rango R-R), además de la frecuencia
+    cardíaca media extrapolada a BPM y medidas de complejidad de la señal cruda.
 
     Parámetros
     ----------
@@ -126,9 +185,22 @@ def extract_ecg_features(
 
     Retorna
     -------
-    dict con la siguiente clave:
-        ecg_bpm (float) : Frecuencia cardíaca media extrapolada a BPM.
-                          Si no se detectan picos R, retorna 0.0.
+    dict con las siguientes claves:
+        ecg_bpm      (float) : Frecuencia cardíaca media extrapolada a BPM.
+                               Si no se detectan picos R, retorna 0.0.
+        ecg_rmssd    (float) : Raíz cuadrada de la media de las diferencias al
+                               cuadrado entre intervalos R-R consecutivos
+                               (en segundos). Mide la variabilidad de corto
+                               plazo asociada al tono parasimpático.
+                               0.0 si hay menos de 2 latidos o menos de
+                               2 intervalos R-R.
+        ecg_rr_range (float) : Diferencia entre el intervalo R-R máximo y el
+                               mínimo (en segundos). Mide la dispersión total
+                               de la variabilidad cardíaca. 0.0 si hay menos
+                               de 2 latidos.
+        ecg_apen     (float) : Entropía Aproximada de la señal ECG original.
+        ecg_lzc      (float) : Complejidad de Lempel-Ziv de la señal ECG
+                               original.
 
     Excepciones
     -----------
@@ -136,7 +208,7 @@ def extract_ecg_features(
 
     Nota
     ----
-    La extrapolación es: BPM = (n_latidos / window_seconds) * 60
+    La extrapolación de BPM es: BPM = (n_latidos / window_seconds) * 60
 
     Ejemplo
     -------
@@ -144,7 +216,8 @@ def extract_ecg_features(
     >>> signal = np.random.randn(2816) * 0.5
     >>> feats = extract_ecg_features(signal)
     >>> print(feats)
-    {'ecg_bpm': ...}
+    {'ecg_bpm': ..., 'ecg_rmssd': ..., 'ecg_rr_range': ...,
+     'ecg_apen': ..., 'ecg_lzc': ...}
     """
     # ── Validación de entrada ──────────────────────────────────────────────
     signal = np.asarray(signal, dtype=float)
@@ -157,11 +230,12 @@ def extract_ecg_features(
     try:
         _, r_peaks_info = nk.ecg_peaks(signal, sampling_rate=sampling_rate)
         r_peak_indices = r_peaks_info.get("ECG_R_Peaks", np.array([]))
-        n_beats = int(np.sum(r_peak_indices > 0)
-                      if isinstance(r_peak_indices, np.ndarray)
-                      else len(r_peak_indices))
+        r_peak_indices = np.asarray(r_peak_indices)
+        r_peak_indices = r_peak_indices[r_peak_indices > 0]
+        n_beats = int(len(r_peak_indices))
     except Exception:
-        # Si NeuroKit2 falla (señal muy corta, plana, ruidosa, etc.) → 0 BPM
+        # Si NeuroKit2 falla (señal muy corta, plana, ruidosa, etc.) → 0 latidos
+        r_peak_indices = np.array([])
         n_beats = 0
 
     # ── Extrapolación a BPM ───────────────────────────────────────────────
@@ -170,7 +244,32 @@ def extract_ecg_features(
     else:
         ecg_bpm = float((n_beats / window_seconds) * SECONDS_PER_MINUTE)
 
-    return {"ecg_bpm": ecg_bpm}
+    # ── Intervalos R-R (en segundos) y variabilidad ───────────────────────
+    if n_beats < 2:
+        ecg_rmssd = 0.0
+        ecg_rr_range = 0.0
+    else:
+        rr_intervals = np.diff(r_peak_indices) / sampling_rate
+
+        # RMSSD requiere al menos 2 intervalos R-R (3 latidos)
+        if len(rr_intervals) < 2:
+            ecg_rmssd = 0.0
+        else:
+            diff_rr = np.diff(rr_intervals)
+            ecg_rmssd = float(np.sqrt(np.mean(diff_rr ** 2)))
+
+        ecg_rr_range = float(np.max(rr_intervals) - np.min(rr_intervals))
+
+    # ── Complejidad (ApEn, LZC) sobre la señal ECG original ───────────────
+    complexity = _extract_complexity(signal)
+
+    return {
+        "ecg_bpm":      ecg_bpm,
+        "ecg_rmssd":    ecg_rmssd,
+        "ecg_rr_range": ecg_rr_range,
+        "ecg_apen":     complexity["apen"],
+        "ecg_lzc":      complexity["lzc"],
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -182,11 +281,15 @@ def extract_gsr_features(
     sampling_rate: int = SAMPLING_RATE
 ) -> dict:
     """
-    Extrae características de activación simpática a partir de una señal GSR/EDA.
+    Extrae características de activación simpática y complejidad a partir de
+    una señal GSR/EDA.
 
     Utiliza NeuroKit2 para detectar los picos SCR (Skin Conductance Response)
-    sobre el componente fásico de la señal. Incluye manejo de errores robusto
-    para ventanas donde no se detectan picos (respuesta basal baja o ausente).
+    sobre el componente fásico de la señal. Además del conteo y amplitud de
+    picos, se calcula el rango total de la señal, la pendiente de su tramo
+    final (tendencia de activación tardía) y medidas de complejidad/entropía.
+    Incluye manejo de errores robusto para ventanas donde no se detectan picos
+    (respuesta basal baja o ausente).
 
     Parámetros
     ----------
@@ -203,6 +306,19 @@ def extract_gsr_features(
                                      en la ventana. 0 si no hay picos.
         gsr_max_amplitude  (float) : Amplitud máxima del pico SCR más alto
                                      [µS]. 0.0 si no hay picos.
+        gsr_min_max_diff   (float) : Diferencia entre el valor máximo y mínimo
+                                     de la señal completa [µS]. Mide el rango
+                                     dinámico total de la respuesta.
+        gsr_slope_late     (float) : Pendiente (regresión lineal de orden 1)
+                                     calculada sobre los últimos 2.75 s de la
+                                     ventana [µS/s]. Indica si la activación
+                                     sudomotora sube o baja hacia el final de
+                                     la ventana. 0.0 si la señal es más corta
+                                     que ese tramo.
+        gsr_apen           (float) : Entropía Aproximada de la señal GSR
+                                     original.
+        gsr_lzc            (float) : Complejidad de Lempel-Ziv de la señal
+                                     GSR original.
 
     Excepciones
     -----------
@@ -213,14 +329,6 @@ def extract_gsr_features(
     NeuroKit2 puede no detectar picos cuando la ventana es muy corta o la
     actividad sudomotora es mínima. En esos casos se retornan ceros para no
     interrumpir el pipeline de procesamiento del Grupo 1.
-
-    Ejemplo
-    -------
-    >>> import numpy as np
-    >>> signal = np.random.rand(2816) * 2 + 1   # señal ficticia en µS
-    >>> feats = extract_gsr_features(signal)
-    >>> print(feats)
-    {'gsr_peaks_count': ..., 'gsr_max_amplitude': ...}
     """
     # ── Validación de entrada ──────────────────────────────────────────────
     signal = np.asarray(signal, dtype=float)
@@ -259,9 +367,29 @@ def extract_gsr_features(
         gsr_peaks_count   = 0
         gsr_max_amplitude = 0.0
 
+    # ── Rango dinámico total de la señal ──────────────────────────────────
+    gsr_min_max_diff = float(np.max(signal) - np.min(signal))
+
+    # ── Pendiente del tramo final (últimos 2.75 s) ────────────────────────
+    n_late_samples = int(2.75 * sampling_rate)
+
+    if len(signal) < n_late_samples:
+        gsr_slope_late = 0.0
+    else:
+        segment = signal[-n_late_samples:]
+        x_axis = np.arange(n_late_samples)
+        gsr_slope_late = float(np.polyfit(x_axis, segment, 1)[0])
+
+    # ── Complejidad (ApEn, LZC) sobre la señal GSR original ───────────────
+    complexity = _extract_complexity(signal)
+
     return {
         "gsr_peaks_count":   gsr_peaks_count,
         "gsr_max_amplitude": gsr_max_amplitude,
+        "gsr_min_max_diff":  gsr_min_max_diff,
+        "gsr_slope_late":    gsr_slope_late,
+        "gsr_apen":          complexity["apen"],
+        "gsr_lzc":           complexity["lzc"],
     }
 
 
@@ -273,7 +401,7 @@ if __name__ == "__main__":
     import sys
 
     print("=" * 60)
-    print("  signal_processor.py — Test de funcionamiento")
+    print("  signal_processor.py — Test de funcionamiento (v2.0.0)")
     print("=" * 60)
 
     rng = np.random.default_rng(seed=42)
@@ -284,12 +412,15 @@ if __name__ == "__main__":
     emg_feats  = extract_emg_features(emg_signal)
     print("\n[EMG] Señal sintética (Gaussiana, µ=0, σ=50 µV)")
     for k, v in emg_feats.items():
-        print(f"  {k:<12} = {v:.4f}")
+        if isinstance(v, int):
+            print(f"  {k:<12} = {v}")
+        else:
+            print(f"  {k:<12} = {v:.4f}")
 
     # ── Test ECG ──────────────────────────────────────────────────────────
     try:
         ecg_signal = nk.ecg_simulate(
-            duration=5,                  # eda_simulate requiere duración entera
+            duration=5,                  # ecg_simulate requiere duración entera
             sampling_rate=SAMPLING_RATE,
             heart_rate=72,
             random_state=42
@@ -297,7 +428,7 @@ if __name__ == "__main__":
         ecg_feats = extract_ecg_features(ecg_signal)
         print("\n[ECG] Señal simulada (72 BPM esperados)")
         for k, v in ecg_feats.items():
-            print(f"  {k:<12} = {v:.2f} BPM")
+            print(f"  {k:<12} = {v:.4f}")
     except Exception as e:
         print(f"\n[ECG] No se pudo simular señal: {e}")
 
@@ -312,7 +443,10 @@ if __name__ == "__main__":
         gsr_feats = extract_gsr_features(gsr_signal)
         print("\n[GSR] Señal simulada (3 SCR esperados)")
         for k, v in gsr_feats.items():
-            print(f"  {k:<12} = {v}")
+            if isinstance(v, int):
+                print(f"  {k:<16} = {v}")
+            else:
+                print(f"  {k:<16} = {v:.4f}")
     except Exception as e:
         print(f"\n[GSR] No se pudo simular señal: {e}")
 

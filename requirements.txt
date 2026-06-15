@@ -5,6 +5,7 @@ dvc
 mne
 pyedflib
 scipy
+neurokit2pip
 
 # --- Manipulación y Análisis de Datos ---
 numpy
