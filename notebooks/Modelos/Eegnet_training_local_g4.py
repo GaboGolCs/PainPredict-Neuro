@@ -89,7 +89,7 @@ if __name__ == '__main__':
     # 1. CONFIGURACIÓN DE MLOPS Y HARDWARE
     os.environ["MLFLOW_TRACKING_URI"]      = "https://dagshub.com/GaboGolCs/PainPredict-Neuro.mlflow"
     os.environ["MLFLOW_TRACKING_USERNAME"] = "GaboGolCs"
-    os.environ["MLFLOW_TRACKING_PASSWORD"] = "42f7e673b8edabb1bb9a4936359bb2fbe533a53c"
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = ""
 
     mlflow.set_experiment("EEGNet_DeepLearning_G2")
 
