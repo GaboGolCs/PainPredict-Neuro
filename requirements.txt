@@ -1,21 +1,39 @@
-# --- Gestor con Google Drive ---
-dvc
+# ==============================================================================
+# PainPredict-Neuro — Dependencias del proyecto
+# ==============================================================================
+# Instalación: pip install -r requirements.txt
+#
+# Nota: los notebooks (.ipynb) fueron desarrollados en Google Colab, que ya
+# incluye numpy, pandas, matplotlib, seaborn y scikit-learn preinstalados.
+# Este archivo cubre el entorno completo para poder reproducir todo
+# (notebooks + scripts locales) fuera de Colab.
+# ==============================================================================
 
-# --- Procesamiento de Señales EEG ---
-mne
-pyedflib
-scipy
-neurokit2pip
-
-# --- Manipulación y Análisis de Datos ---
-numpy
-pandas
+# --- Core científico / manejo de datos ---
+numpy>=1.26
+pandas>=2.2
+scipy>=1.12
 
 # --- Visualización ---
-matplotlib
-seaborn
+matplotlib>=3.8
+seaborn>=0.13
 
-# --- Machine Learning e IA ---
-scikit-learn
-# tensorflow  # Descomentar si usarán redes neuronales profundas
-# torch       # Descomentar si prefieren PyTorch
+# --- Machine Learning clásico ---
+scikit-learn>=1.4
+xgboost>=2.0
+imbalanced-learn>=0.12      # SMOTETomek, Pipeline balanceado
+optuna>=3.6                  # Optimización de hiperparámetros
+shap>=0.45                   # Explicabilidad (SHAP values)
+
+# --- Deep Learning (EEGNet) ---
+torch>=2.2
+
+# --- Procesamiento de señales EEG / bioseñales ---
+mne>=1.6                     # Lectura/procesamiento de EEG (BrainVision, .fif)
+neurokit2>=0.2.7             # Extracción de features ECG/EMG/GSR
+
+# --- Tracking de experimentos (MLOps) ---
+mlflow>=2.12                 # Tracking local y remoto (DagsHub)
+
+# --- Utilidades ---
+tqdm>=4.66                   # Barras de progreso
