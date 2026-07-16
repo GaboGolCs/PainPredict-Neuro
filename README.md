@@ -44,9 +44,11 @@ Training-PainPredict-Neuro/
 │   │   ├── TEST_FUNCIONAMIENTO.py
 │   │   └── unified_interface.py
 │   ├── model_training/
-│   │   ├── final_autonomic/
+│   │   ├── final_autonomic_training/
 │   │   │   └── Modelamiento_XGBoost_Biovid.ipynb
-│   │   ├── final_eegnet_training/
+│   │   ├── final_eegnet_training/ 
+
+│   │   │       └── Eegnet_training_local_MEJORADO.py
 │   │   ├── instrucciones.txt
 │   │   ├── old_autonomic_tries/
 │   │   │   ├── xgboost_Intento1.ipynb
